@@ -1,0 +1,6 @@
+src/.env
+src/cookies.json
+src/proxies.csv
+src/proxiessock5.csv
+src/telegram.json
+src/tiktok_live_config.json

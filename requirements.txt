@@ -1,0 +1,35 @@
+# TikTok Recording Worker Dependencies
+# TikTok Live API
+TikTokLive==6.6.0
+
+# Database and Caching
+sqlalchemy==1.4.53
+psycopg2-binary==2.9.9
+redis==5.0.1
+
+# HTTP and Networking
+requests==2.31.0
+aiohttp==3.9.1
+websockets==12.0
+
+# Configuration and Environment
+python-dotenv==1.0.0
+
+# Video Processing
+opencv-python==4.8.1.78
+pillow==10.1.0
+ffmpeg-python==0.2.0
+
+# File Processing
+python-magic==0.4.27
+
+# Logging and Monitoring
+colorlog==6.8.0
+
+# System Monitoring
+psutil==5.9.6
+
+# Date and Time
+python-dateutil==2.8.2
+
+# Async Support - asyncio is built into Python 3.7+

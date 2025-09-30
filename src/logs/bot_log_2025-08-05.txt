@@ -1,0 +1,17 @@
+2025-08-05 21:33:26 - INFO - Logger initialized. Log file: logs\bot_log_2025-08-05.txt
+2025-08-05 21:33:26 - INFO - Checking and Installing dependencies...
+
+2025-08-05 21:33:40 - INFO - Logger initialized. Log file: logs\bot_log_2025-08-05.txt
+2025-08-05 21:33:40 - ERROR - ❌ Failed to initialize WorkQueueService Redis connection: 'EnvConfig' object has no attribute 'redis_connect_timeout_seconds'
+2025-08-05 21:34:09 - INFO - Logger initialized. Log file: logs\bot_log_2025-08-05.txt
+2025-08-05 21:34:09 - ERROR - ❌ Failed to initialize WorkQueueService Redis connection: 'EnvConfig' object has no attribute 'redis_connect_timeout_seconds'
+2025-08-05 23:23:07 - INFO - Logger initialized. Log file: logs\bot_log_2025-08-05.txt
+2025-08-05 23:23:07 - ERROR - ❌ Failed to initialize WorkQueueService Redis connection: 'EnvConfig' object has no attribute 'redis_connect_timeout_seconds'
+2025-08-05 23:27:31 - INFO - Logger initialized. Log file: logs\bot_log_2025-08-05.txt
+2025-08-05 23:27:33 - INFO - ✅ WorkQueueService Redis connection established
+2025-08-05 23:29:48 - INFO - Logger initialized. Log file: logs\bot_log_2025-08-05.txt
+2025-08-05 23:29:49 - INFO - ✅ WorkQueueService Redis connection established
+2025-08-05 23:29:54 - INFO - Database connection initialized successfully
+2025-08-05 23:32:10 - INFO - Logger initialized. Log file: logs\bot_log_2025-08-05.txt
+2025-08-05 23:32:12 - INFO - ✅ WorkQueueService Redis connection established
+2025-08-05 23:32:16 - INFO - Database connection initialized successfully

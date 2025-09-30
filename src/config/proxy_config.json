@@ -1,0 +1,35 @@
+{
+  "proxy_enabled": true,
+  "proxy_optimization": {
+    "max_retries": 3,
+    "reduce_retries_for_protocol_errors": true,
+    "protocol_error_max_retries": 2,
+    "user_cache_enabled": true,
+    "user_cache_duration_minutes": 60,
+    "fail_fast_errors": [
+      "HTTP/2 stream 0 was not closed cleanly: PROTOCOL_ERROR",
+      "Connection reset by peer",
+      "Remote end closed connection without response"
+    ],
+    "hybrid_cache_settings": {
+      "base_ttl_minutes": 30,
+      "max_ttl_hours": 24,
+      "fallback_cooldown_hours": 2,
+      "non_fallback_errors": [
+        "USER_NOT_FOUND",
+        "ACCOUNT_BANNED", 
+        "INVALID_USERNAME",
+        "CONNECTION_PROTOCOL_ERROR",
+        "NOT_CURRENTLY_LIVE"
+      ],
+      "fallback_compatible_errors": [
+        "PRIVATE_ACCOUNT",
+        "RESTRICTED_ACCOUNT",
+        "AUTH_REQUIRED",
+        "USER_LIVE_EXCEPTION",
+        "ROOM_ID_ERROR",
+        "JSON_DECODE_ERROR"
+      ]
+    }
+  }
+}

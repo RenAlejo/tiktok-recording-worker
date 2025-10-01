@@ -286,6 +286,9 @@ class WorkerRecordingService(RecordingInterface):
         Workers no validan permisos - solo ejecutan jobs aprobados por el bot
         """
         try:
+            # Guardar job_id para procesar metadata después
+            self._current_job_id = job_id
+
             logger.info(f"[{self.worker_id}] Starting recording for {username}")
 
             # Verificar si ya existe una grabación activa
@@ -326,6 +329,9 @@ class WorkerRecordingService(RecordingInterface):
                 if job_id:
                     self._notify_recording_failed(job_id, username, user_id, error_msg)
                 raise UserLiveException(error_msg)
+
+            # Procesar subscribers adicionales del metadata (si existen)
+            self._process_additional_subscribers(recording_id, job_id)
 
             def run_recording():
                 try:
@@ -607,6 +613,72 @@ class WorkerRecordingService(RecordingInterface):
 
         except Exception as e:
             logger.error(f"[{self.worker_id}] Failed to notify monitoring workers about failure: {e}")
+
+    def _process_additional_subscribers(self, recording_id: str, job_id: str):
+        """
+        Procesa subscribers adicionales del metadata del job
+        Agrega cada subscriber a la estructura subscribers:recording_id en Redis
+        """
+        try:
+            if not job_id or not self.redis_service:
+                return
+
+            # Obtener metadata del job desde Redis
+            job_key = f"job:{job_id}"
+            redis_client = self.redis_service.redis
+            job_data = redis_client.hgetall(job_key)
+
+            if not job_data:
+                logger.debug(f"No job data found for {job_id}, skipping additional subscribers")
+                return
+
+            # Parse metadata
+            metadata_str = job_data.get("metadata", "{}")
+            metadata = json.loads(metadata_str)
+
+            additional_subscribers = metadata.get("additional_subscribers", [])
+
+            if not additional_subscribers:
+                logger.debug(f"No additional subscribers found for {recording_id}")
+                return
+
+            # Agregar cada subscriber a Redis
+            from services.redis_helper import RedisAsyncHelper
+            for subscriber in additional_subscribers:
+                user_id = int(subscriber["user_id"])
+                chat_id = int(subscriber["chat_id"])
+
+                success = RedisAsyncHelper.run_async_safe(
+                    self.redis_service.add_subscription,
+                    recording_id, user_id, chat_id,
+                    timeout=5
+                )
+
+                if success:
+                    logger.info(f"✅ Added additional subscriber {user_id} to recording {recording_id}")
+                else:
+                    logger.warning(f"⚠️ Failed to add additional subscriber {user_id} to recording {recording_id}")
+
+            logger.info(f"Processed {len(additional_subscribers)} additional subscribers for {recording_id}")
+
+        except Exception as e:
+            logger.error(f"Error processing additional subscribers for {recording_id}: {e}")
+
+    def _cleanup_memory_structures(self, username: str):
+        """
+        Cleanup memory structures - En workers NO hay estructuras compartidas en memoria
+        Este método existe solo para compatibilidad con el monolito
+        """
+        # En workers distribuidos, TODO está en Redis, no hay nada que limpiar en memoria
+        pass
+
+    def _get_recording_subscribers(self, username: str) -> list:
+        """
+        Get recording subscribers - En workers TODO está en Redis
+        Este método existe solo para compatibilidad con el monolito
+        """
+        # En workers distribuidos, subscribers están en Redis, no en memoria
+        return []
 
     def _restart_recording_fragment(self, user_id: int, username: str, chat_id: int, fragment_number: int):
         """Reinicia grabación con nuevo fragmento (simplificado del original)"""

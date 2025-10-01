@@ -205,7 +205,10 @@ class WorkerRecordingService(RecordingInterface):
 
     def _notify_recording_failed(self, job_id: str, username: str, user_id: int, error_message: str):
         """Notifica que la grabación falló al iniciar"""
+        # Notificar al bot
         self._notify_bot_recording_event("recording_failed", job_id, username, user_id, error_message=error_message)
+        # Notificar a monitoring workers para que resuman monitoreo
+        self._notify_monitoring_worker_failed(username, job_id, error_message)
 
     def _notify_recording_stopped(self, job_id: str, username: str, user_id: int):
         """Notifica que la grabación se detuvo"""
@@ -357,6 +360,9 @@ class WorkerRecordingService(RecordingInterface):
                     def cleanup_callback():
                         logger.info(f"[{self.worker_id}] Cleanup callback called for {username}")
                         self._cleanup_recording(user_id, username)
+
+                        # Notify monitoring workers that recording is complete
+                        self._notify_recording_completed(username, job_id)
 
                     recorder.cleanup_callback = cleanup_callback
 
@@ -554,6 +560,53 @@ class WorkerRecordingService(RecordingInterface):
 
         except Exception as e:
             logger.error(f"[{self.worker_id}] Error in cleanup for {username}: {e}")
+
+    def _notify_recording_completed(self, username: str, job_id: str):
+        """Notify monitoring workers that recording is complete"""
+        try:
+            if not self.notification_redis:
+                logger.warning(f"[{self.worker_id}] Redis not available, cannot notify monitoring workers")
+                return
+
+            # Publish to monitoring_worker_broadcast channel
+            notification = {
+                "type": "recording_completed",
+                "username": username,
+                "job_id": job_id,
+                "worker_id": self.worker_id,
+                "timestamp": time.time(),
+                "success": True
+            }
+
+            self.notification_redis.publish("monitoring_worker_broadcast", json.dumps(notification))
+            logger.info(f"[{self.worker_id}] ✅ Notified monitoring workers: recording completed for {username}")
+
+        except Exception as e:
+            logger.error(f"[{self.worker_id}] Failed to notify monitoring workers: {e}")
+
+    def _notify_monitoring_worker_failed(self, username: str, job_id: str, error_message: str):
+        """Notify monitoring workers that recording failed"""
+        try:
+            if not self.notification_redis:
+                logger.warning(f"[{self.worker_id}] Redis not available, cannot notify monitoring workers")
+                return
+
+            # Publish to monitoring_worker_broadcast channel
+            notification = {
+                "type": "recording_failed",
+                "username": username,
+                "job_id": job_id,
+                "worker_id": self.worker_id,
+                "timestamp": time.time(),
+                "error": error_message,
+                "success": False
+            }
+
+            self.notification_redis.publish("monitoring_worker_broadcast", json.dumps(notification))
+            logger.info(f"[{self.worker_id}] ❌ Notified monitoring workers: recording failed for {username}")
+
+        except Exception as e:
+            logger.error(f"[{self.worker_id}] Failed to notify monitoring workers about failure: {e}")
 
     def _restart_recording_fragment(self, user_id: int, username: str, chat_id: int, fragment_number: int):
         """Reinicia grabación con nuevo fragmento (simplificado del original)"""

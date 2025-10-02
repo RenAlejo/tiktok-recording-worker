@@ -4,3 +4,10 @@ src/proxies.csv
 src/proxiessock5.csv
 src/telegram.json
 src/tiktok_live_config.json
+*.pyc
+/src/logs
+src/worker_telegram_session.session
+src/worker_telegram_session.session-journal
+*.pyc
+src/services/__pycache__/worker_recording_service.cpython-311.pyc
+src/services/__pycache__/recording_redis_service.cpython-311.pyc

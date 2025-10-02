@@ -1268,6 +1268,12 @@ class RecordingRedisService:
             Número de registros limpiados
         """
         try:
+            # VERIFICACIÓN CRÍTICA: No limpiar si hay fragmentos activos en progreso
+            has_active_fragments = self._has_active_fragments(username)
+            if has_active_fragments:
+                logger.info(f"⏸️ Session cleanup skipped for {username} - fragmented recording still has active fragments")
+                return 0
+
             session_keys = self.redis.keys(f"recording:{username}:*")
             if not session_keys:
                 logger.debug(f"No session records found for user {username}")

@@ -120,4 +120,4 @@ def read_socks5_proxy_config():
                 "username": username,
                 "password": password
             })
-    return proxie
+    return proxies

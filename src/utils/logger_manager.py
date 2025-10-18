@@ -1,4 +1,5 @@
 import logging
+from logging.handlers import TimedRotatingFileHandler
 import os
 from datetime import datetime
 
@@ -37,17 +38,27 @@ class LoggerManager:
             if not os.path.exists(log_dir):
                 os.makedirs(log_dir)
 
-            # Generar nombre de archivo con fecha
-            current_date = datetime.now().strftime('%Y-%m-%d')
-            log_file = os.path.join(log_dir, f'bot_log_{current_date}.txt')
+            # Base log file (sin fecha en el nombre - se agrega automáticamente al rotar)
+            base_log_file = os.path.join(log_dir, 'bot_log.txt')
 
-            # File handler (para todos los niveles)
-            file_handler = logging.FileHandler(log_file, encoding='utf-8')
+            # TimedRotatingFileHandler - Rota a medianoche cada día
+            file_handler = TimedRotatingFileHandler(
+                filename=base_log_file,
+                when='midnight',           # Rota a medianoche
+                interval=1,                # Cada 1 día
+                backupCount=30,           # Retener últimos 30 días de logs
+                encoding='utf-8',
+                utc=False                 # Usar hora local
+            )
             file_handler.setLevel(logging.INFO)
             file_format = '%(asctime)s - %(levelname)s - %(message)s'
             file_datefmt = '%Y-%m-%d %H:%M:%S'
             file_formatter = logging.Formatter(file_format, file_datefmt)
             file_handler.setFormatter(file_formatter)
+
+            # Sufijo de fecha para archivos rotados (bot_log.txt.2025-10-18)
+            file_handler.suffix = "%Y-%m-%d"
+
             self.logger.addHandler(file_handler)
 
             # Console handler (para todos los niveles)
@@ -70,7 +81,7 @@ class LoggerManager:
             self.logger.addHandler(console_handler)
 
             # Log inicial
-            self.logger.info(f"Logger initialized. Log file: {log_file}")
+            self.logger.info(f"Logger initialized. Log file: {base_log_file} (rotates daily at midnight)")
 
     def info(self, message):
         """

@@ -2136,34 +2136,34 @@ class TikTokRecorder:
             # Patrones de corrupción críticos para detectar
             corruption_patterns = [
                 # PTS/DTS errors (muy comunes en lives de TikTok)
-                r"Non-monotonous DTS in output stream",
-                r"Non-monotonic DTS.*changing to.*This may result in incorrect timestamps",  # NUEVO: DTS no monotónico
-                r"PTS < DTS in output stream",
-                r"Invalid DTS:",
-                r"Invalid PTS:",
-                r"DTS out of order",
-                r"PTS out of order",
+                #r"Non-monotonous DTS in output stream",
+                #r"Non-monotonic DTS.*changing to.*This may result in incorrect timestamps",  # NUEVO: DTS no monotónico
+                #r"PTS < DTS in output stream",
+                #r"Invalid DTS:",
+                #r"Invalid PTS:",
+                #r"DTS out of order",
+                #r"PTS out of order",
                 
                 # Timestamp corruption
-                r"Application provided invalid, non monotonically increasing dts",
-                r"Timestamps are unset in a packet",
-                r"Encoder did not produce proper pts",
+               # r"Application provided invalid, non monotonically increasing dts",
+               # r"Timestamps are unset in a packet",
+               # r"Encoder did not produce proper pts",
                 
                 # Stream corruption
-                r"corrupt decoded frame",
-                r"concealing errors",
-                r"error while decoding",
-                r"Invalid data found when processing input",
-                r"corrupt input packet",
-                r"missing picture in access unit",
+                #r"corrupt decoded frame",
+                #r"concealing errors",
+                #r"error while decoding",
+                #r"Invalid data found when processing input",
+                #r"corrupt input packet",
+                #r"missing picture in access unit",
                 
                 # H.264 specific errors
-                r"error unpacking bitsream",
-                r"Invalid NAL unit size",
-                r"decode_slice_header error",
-                r"corrupted macroblock",
-                r"mmco: unref short failure",
-                r"\d+ bytes left at end of AVCC header",  # NUEVO: Header AVCC corrupto (filtrado especialmente)
+                #r"error unpacking bitsream",
+                #r"Invalid NAL unit size",
+                #r"decode_slice_header error",
+                #r"corrupted macroblock",
+                #r"mmco: unref short failure",
+                #r"\d+ bytes left at end of AVCC header",  # NUEVO: Header AVCC corrupto (filtrado especialmente)
                 
                 # Audio corruption
                 r"Frame size larger than expected",
@@ -2184,7 +2184,7 @@ class TikTokRecorder:
                 r"Concatenated FLV detected.*might fail",  # FLV stream corruption
                 
                 # Matroska timestamp corruption (CRITICAL - causes huge temporal gaps)
-                r"Starting new cluster due to timestamp"  # Matroska timestamp corruption - immediate restart needed
+                #r"Starting new cluster due to timestamp"  # Matroska timestamp corruption - immediate restart needed
                 
                 # Buffer overruns/underruns
                 r"Real-time buffer .* too full or near too full",
@@ -2362,14 +2362,14 @@ class TikTokRecorder:
                         
                         # CRÍTICO: Errores graves que requieren reinicio inmediato después de inicialización
                         critical_errors_immediate_restart = [
-                            "bytes left at end of AVCC header",  # AVCC header corruption después de init
+                            #"bytes left at end of AVCC header",  # AVCC header corruption después de init
                             "corrupt decoded frame",
                             "Invalid data found when processing input",
                             "Decryption has failed",  # TLS decryption failure - immediate restart required
                             "Will reconnect at",  # Pre-TLS failure - restart before corruption
-                            "Packet mismatch",  # FLV corruption - restart immediately
-                            "Concatenated FLV detected",  # Stream corruption - restart immediately
-                            "Starting new cluster due to timestamp"  # Matroska timestamp corruption - CRITICAL
+                            #"Packet mismatch",  # FLV corruption - restart immediately
+                            #"Concatenated FLV detected",  # Stream corruption - restart immediately
+                            #"Starting new cluster due to timestamp"  # Matroska timestamp corruption - CRITICAL
                         ]
                         
                         # Si es un error crítico después del período de inicialización, reiniciar inmediatamente

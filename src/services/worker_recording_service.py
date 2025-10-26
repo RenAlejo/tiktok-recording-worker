@@ -549,10 +549,13 @@ class WorkerRecordingService(RecordingInterface):
         try:
             logger.debug(f"[{self.worker_id}] Cleaning up recording for {username}")
 
+            recording_id = None  # Capturar recording_id antes de eliminar
+
             # Limpiar estructuras de usuario
             if user_id in self.user_recordings and username in self.user_recordings[user_id]:
                 recording_info = self.user_recordings[user_id][username]
                 chat_id = recording_info.get('chat_id')
+                recording_id = recording_info.get('recording_id')  # Guardar para Redis cleanup
 
                 del self.user_recordings[user_id][username]
 
@@ -561,6 +564,23 @@ class WorkerRecordingService(RecordingInterface):
                     self.channel_recordings[chat_id].discard(username)
                     if not self.channel_recordings[chat_id]:
                         del self.channel_recordings[chat_id]
+
+            # Limpiar registros Redis de grabaciones fallidas
+            if recording_id and self.redis_service:
+                try:
+                    from services.redis_helper import RedisAsyncHelper
+                    success = RedisAsyncHelper.run_async_safe(
+                        self.redis_service._force_cleanup_recording,
+                        recording_id,
+                        "failed_recording",
+                        timeout=5
+                    )
+                    if success:
+                        logger.info(f"[{self.worker_id}] ✅ Redis cleanup completed for {recording_id}")
+                    else:
+                        logger.warning(f"[{self.worker_id}] ⚠️ Redis cleanup failed for {recording_id}")
+                except Exception as redis_error:
+                    logger.error(f"[{self.worker_id}] ❌ Error during Redis cleanup for {recording_id}: {redis_error}")
 
             # NO limpiar master_recordings aquí - se maneja en UploadManager
             logger.debug(f"[{self.worker_id}] Cleanup completed for {username}")

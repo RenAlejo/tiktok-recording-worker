@@ -709,122 +709,174 @@ class WorkerRecordingService(RecordingInterface):
             return False
 
     def _restart_recording_fragment(self, user_id: int, username: str, chat_id: int, fragment_number: int):
-        """Reinicia grabación con nuevo fragmento (basado en monolito original)"""
-        try:
-            logger.info(f"[{self.worker_id}] Restarting recording fragment {fragment_number} for {username}")
+        """Reinicia grabación con nuevo fragmento con reintentos robustos (sin demoras)"""
+        max_attempts = config.fragment_url_retry_attempts
 
-            # Verificar que el usuario sigue vivo y obtener room_id fresco para el fragmento
-            room_id = self.tiktok_api.get_room_id_from_user(username)
-            if not room_id or not self.tiktok_api.is_room_alive(room_id):
-                logger.info(f"[{self.worker_id}] User {username} is no longer live. Not restarting fragment.")
-                self._cleanup_recording(user_id, username)
-                return
+        # Recuperar job_id ANTES del loop de reintentos
+        job_id = None
+        recording_id = None
+        with self._recording_lock:
+            if username in self.master_recordings:
+                job_id = self.master_recordings[username].get('job_id')
+                recording_id = self.master_recordings[username].get('recording_id')
 
-            logger.info(f"[{self.worker_id}] Fragment {fragment_number} for {username} using room_id: {room_id}")
-            cookies = read_cookies()
+        for attempt in range(1, max_attempts + 1):
+            try:
+                logger.info(f"[{self.worker_id}] Restarting fragment {fragment_number} for {username} (attempt {attempt}/{max_attempts})")
 
-            # Recuperar job_id de master_recordings
-            job_id = None
-            recording_id = None
-            with self._recording_lock:
-                if username in self.master_recordings:
-                    job_id = self.master_recordings[username].get('job_id')
-                    recording_id = self.master_recordings[username].get('recording_id')
-
-            if not recording_id:
-                logger.error(f"[{self.worker_id}] Recording ID not found for fragment {fragment_number} of {username}")
-                return
-
-            def auto_restart_callback(next_fragment_number):
-                """Callback para reiniciar automáticamente la grabación con el siguiente fragmento"""
-                logger.info(f"[{self.worker_id}] Auto-restarting recording for {username} with fragment {next_fragment_number}")
-                restart_thread = threading.Thread(
-                    target=self._restart_recording_fragment,
-                    args=(user_id, username, chat_id, next_fragment_number),
-                    daemon=True
-                )
-                restart_thread.start()
-
-            recorder = TikTokRecorder(
-                url=None,
-                user=username,
-                room_id=room_id,  # Pasar room_id ya validado para evitar peticiones duplicadas
-                mode=Mode.MANUAL,
-                automatic_interval=config.automatic_interval_minutes,
-                cookies=cookies,
-                output=config.output_directory,
-                duration=None,
-                use_telegram=True,
-                telegram_chat_id=chat_id,
-                telegram_instance=self.telegram_uploader,
-                fragment_number=fragment_number,
-                auto_restart_callback=auto_restart_callback
-            )
-
-            # Set cleanup callback for fragments - NO limpiar shared recording data
-            def cleanup_callback():
-                logger.info(f"[{self.worker_id}] Fragment cleanup callback called for {username}")
-                self._cleanup_recording(user_id, username)
-
-                # CRÍTICO: Notificar al monitoring worker cuando finaliza la grabación completa
-                # Solo notificar en el cleanup del último fragmento (cuando el stream termina)
-                if job_id:
-                    self._notify_recording_completed(username, job_id)
-
-                logger.info(f"[{self.worker_id}] Fragment cleanup completed for {username} - shared data preserved")
-
-            recorder.cleanup_callback = cleanup_callback
-
-            # Marcar como fragmentada en Redis si es el segundo fragmento o posterior
-            if self.redis_service and fragment_number > 1:
-                from services.redis_helper import RedisAsyncHelper
-
-                success = RedisAsyncHelper.run_async_safe(
-                    self.redis_service.mark_recording_fragmented,
-                    recording_id, fragment_number,
-                    timeout=5
-                )
-
-                if success:
-                    logger.info(f"[{self.worker_id}] ✅ Marked recording {recording_id} as fragmented (fragment {fragment_number})")
-                else:
-                    logger.warning(f"[{self.worker_id}] ⚠️ Failed to mark recording {recording_id} as fragmented")
-
-            # Actualizar la información de la grabación con el nuevo fragmento
-            # Asegurar que la entrada existe en user_recordings
-            if user_id not in self.user_recordings:
-                self.user_recordings[user_id] = {}
-
-            self.user_recordings[user_id][username] = {
-                'recorder': recorder,
-                'thread': threading.current_thread(),
-                'start_time': time.time(),
-                'stop_event': threading.Event(),
-                'chat_id': chat_id,
-                'fragment_number': fragment_number,
-                'recording_id': recording_id,
-                'original_user_id': user_id,
-                'original_username': username
-            }
-
-            # Asegurar que el canal está registrado
-            if chat_id not in self.channel_recordings:
-                self.channel_recordings[chat_id] = set()
-            self.channel_recordings[chat_id].add(username)
-
-            logger.info(f"[{self.worker_id}] Starting fragment {fragment_number} for {username}")
-            recorder.run()
-
-        except Exception as e:
-            logger.error(f"[{self.worker_id}] Error restarting recording fragment for {username}: {e}")
-            self._cleanup_recording(user_id, username)
-        finally:
-            # Solo limpiar si el recorder se detuvo manualmente o hubo un error definitivo
-            if user_id in self.user_recordings and username in self.user_recordings[user_id]:
-                recorder_info = self.user_recordings[user_id][username].get('recorder')
-                if hasattr(recorder_info, 'stop_flag') and recorder_info.stop_flag:
-                    # Se detuvo manualmente, limpiar
+                # Verificar que el usuario sigue vivo y obtener room_id fresco para el fragmento
+                room_id = self.tiktok_api.get_room_id_from_user(username)
+                if not room_id or not self.tiktok_api.is_room_alive(room_id):
+                    logger.info(f"[{self.worker_id}] User {username} is no longer live after {attempt} attempts. Stopping retries.")
                     self._cleanup_recording(user_id, username)
+
+                    # CRÍTICO: Notificar al monitoring worker para reanudar
+                    if job_id:
+                        self._notify_recording_completed(username, job_id)
+                        logger.info(f"[{self.worker_id}] ✅ Notified monitoring worker to resume for {username}")
+                    return
+
+                logger.info(f"[{self.worker_id}] Fragment {fragment_number} for {username} using room_id: {room_id}")
+                cookies = read_cookies()
+
+                if not recording_id:
+                    logger.error(f"[{self.worker_id}] Recording ID not found for fragment {fragment_number} of {username}")
+                    # Notificar para reanudar monitoreo
+                    if job_id:
+                        self._notify_recording_completed(username, job_id)
+                    return
+
+                def auto_restart_callback(next_fragment_number):
+                    """Callback para reiniciar automáticamente la grabación con el siguiente fragmento"""
+                    logger.info(f"[{self.worker_id}] Auto-restarting recording for {username} with fragment {next_fragment_number}")
+                    restart_thread = threading.Thread(
+                        target=self._restart_recording_fragment,
+                        args=(user_id, username, chat_id, next_fragment_number),
+                        daemon=True
+                    )
+                    restart_thread.start()
+
+                recorder = TikTokRecorder(
+                    url=None,
+                    user=username,
+                    room_id=room_id,  # Pasar room_id ya validado para evitar peticiones duplicadas
+                    mode=Mode.MANUAL,
+                    automatic_interval=config.automatic_interval_minutes,
+                    cookies=cookies,
+                    output=config.output_directory,
+                    duration=None,
+                    use_telegram=True,
+                    telegram_chat_id=chat_id,
+                    telegram_instance=self.telegram_uploader,
+                    fragment_number=fragment_number,
+                    auto_restart_callback=auto_restart_callback
+                )
+
+                # Set cleanup callback for fragments - NO limpiar shared recording data
+                def cleanup_callback():
+                    logger.info(f"[{self.worker_id}] Fragment cleanup callback called for {username}")
+                    self._cleanup_recording(user_id, username)
+
+                    # CRÍTICO: Notificar al monitoring worker cuando finaliza la grabación completa
+                    # Solo notificar en el cleanup del último fragmento (cuando el stream termina)
+                    if job_id:
+                        self._notify_recording_completed(username, job_id)
+
+                    logger.info(f"[{self.worker_id}] Fragment cleanup completed for {username} - shared data preserved")
+
+                recorder.cleanup_callback = cleanup_callback
+
+                # Marcar como fragmentada en Redis si es el segundo fragmento o posterior
+                if self.redis_service and fragment_number > 1:
+                    from services.redis_helper import RedisAsyncHelper
+
+                    success = RedisAsyncHelper.run_async_safe(
+                        self.redis_service.mark_recording_fragmented,
+                        recording_id, fragment_number,
+                        timeout=5
+                    )
+
+                    if success:
+                        logger.info(f"[{self.worker_id}] ✅ Marked recording {recording_id} as fragmented (fragment {fragment_number})")
+                    else:
+                        logger.warning(f"[{self.worker_id}] ⚠️ Failed to mark recording {recording_id} as fragmented")
+
+                # Actualizar la información de la grabación con el nuevo fragmento
+                # Asegurar que la entrada existe en user_recordings
+                if user_id not in self.user_recordings:
+                    self.user_recordings[user_id] = {}
+
+                self.user_recordings[user_id][username] = {
+                    'recorder': recorder,
+                    'thread': threading.current_thread(),
+                    'start_time': time.time(),
+                    'stop_event': threading.Event(),
+                    'chat_id': chat_id,
+                    'fragment_number': fragment_number,
+                    'recording_id': recording_id,
+                    'original_user_id': user_id,
+                    'original_username': username
+                }
+
+                # Asegurar que el canal está registrado
+                if chat_id not in self.channel_recordings:
+                    self.channel_recordings[chat_id] = set()
+                self.channel_recordings[chat_id].add(username)
+
+                logger.info(f"[{self.worker_id}] Starting fragment {fragment_number} for {username}")
+                recorder.run()
+
+                # Si llegamos aquí, recorder.run() terminó exitosamente - salir del loop de reintentos
+                logger.info(f"[{self.worker_id}] ✅ Fragment {fragment_number} for {username} completed successfully")
+                return
+
+            except (LiveNotFound, UserLiveException) as e:
+                logger.warning(f"[{self.worker_id}] ⚠️ Failed to get stream URL for fragment {fragment_number} of {username} (attempt {attempt}/{max_attempts}): {e}")
+
+                if attempt < max_attempts:
+                    logger.warning(f"[{self.worker_id}] 🔄 Retrying immediately (attempt {attempt + 1}/{max_attempts})...")
+                    continue  # Reintento inmediato sin demoras
+                else:
+                    # Todos los reintentos agotados
+                    logger.error(f"[{self.worker_id}] ❌ All {max_attempts} attempts exhausted for fragment {fragment_number} of {username}")
+                    self._cleanup_recording(user_id, username)
+
+                    # CRÍTICO: Notificar al monitoring worker para reanudar monitoreo
+                    if job_id:
+                        self._notify_recording_completed(username, job_id)
+                        logger.info(f"[{self.worker_id}] ✅ Notified monitoring worker to resume for {username} after exhausting retries")
+                    return
+
+            except Exception as e:
+                logger.error(f"[{self.worker_id}] ❌ Unexpected error restarting recording fragment for {username} (attempt {attempt}/{max_attempts}): {e}")
+
+                if attempt < max_attempts:
+                    logger.warning(f"[{self.worker_id}] 🔄 Retrying immediately (attempt {attempt + 1}/{max_attempts})...")
+                    continue  # Reintento inmediato sin demoras
+                else:
+                    # Todos los reintentos agotados
+                    logger.error(f"[{self.worker_id}] ❌ All {max_attempts} attempts exhausted for fragment {fragment_number} of {username}")
+                    self._cleanup_recording(user_id, username)
+
+                    # CRÍTICO: Notificar al monitoring worker para reanudar monitoreo
+                    if job_id:
+                        self._notify_recording_completed(username, job_id)
+                        logger.info(f"[{self.worker_id}] ✅ Notified monitoring worker to resume for {username} after exhausting retries")
+                    return
+
+            finally:
+                # Solo limpiar si el recorder se detuvo manualmente
+                if user_id in self.user_recordings and username in self.user_recordings[user_id]:
+                    recorder_info = self.user_recordings[user_id][username].get('recorder')
+                    if recorder_info and hasattr(recorder_info, 'stop_flag') and recorder_info.stop_flag:
+                        # Se detuvo manualmente, limpiar
+                        logger.info(f"[{self.worker_id}] Fragment {fragment_number} for {username} was manually stopped")
+                        self._cleanup_recording(user_id, username)
+
+                        # Notificar para reanudar monitoreo
+                        if job_id:
+                            self._notify_recording_completed(username, job_id)
+                            logger.info(f"[{self.worker_id}] ✅ Notified monitoring worker to resume for {username} after manual stop")
 
     # Métodos de interfaz requeridos
     def can_start_recording(self, chat_id: int, username: str) -> bool:

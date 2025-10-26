@@ -150,7 +150,13 @@ class EnvConfig:
     @property
     def bot_recording_init_wait(self) -> int:
         return self.get_int("BOT_RECORDING_INIT_WAIT_SECONDS", 5)
-    
+
+    # Fragment retry configuration
+    @property
+    def fragment_url_retry_attempts(self) -> int:
+        """Number of retry attempts to get stream URL for fragments (no delays between retries)"""
+        return self.get_int("FRAGMENT_URL_RETRY_ATTEMPTS", 10)
+
     # Progress Messages Configuration
     @property
     def progress_validating_user_duration(self) -> int:

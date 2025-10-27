@@ -894,9 +894,9 @@ class RecordingRedisService:
             
             # 3. Solo proceder con cleanup si TODAS las entregas están confirmadas Y no hay fragmentos activos
             if pending_count == 0:
-                # VERIFICACIÓN ADICIONAL: Replicar lógica de memoria para grabaciones fragmentadas
+                # VERIFICACIÓN ADICIONAL: Verificar fragmentos activos usando Redis
                 username = recording_id.split('_')[0]
-                has_active_fragments = self._has_active_fragments(username)
+                has_active_fragments = await self._has_active_fragments(username)
                 
                 if has_active_fragments:
                     logger.info(f"⏸️ Cleanup skipped for {recording_id} - fragmented recording still has active fragments")
@@ -1269,7 +1269,7 @@ class RecordingRedisService:
         """
         try:
             # VERIFICACIÓN CRÍTICA: No limpiar si hay fragmentos activos en progreso
-            has_active_fragments = self._has_active_fragments(username)
+            has_active_fragments = await self._has_active_fragments(username)
             if has_active_fragments:
                 logger.info(f"⏸️ Session cleanup skipped for {username} - fragmented recording still has active fragments")
                 return 0
@@ -1765,25 +1765,17 @@ class RecordingRedisService:
             logger.error(f"❌ Error getting cleanup stats: {e}")
             return {}
     
-    def _has_active_fragments(self, username: str) -> bool:
+    async def _has_active_fragments(self, username: str) -> bool:
         """
-        Verifica si una grabación tiene fragmentos activos (replicando lógica de memoria)
-        
+        Verifica si una grabación tiene fragmentos activos basándose en Redis
+
         Args:
             username: Nombre del usuario
-            
+
         Returns:
-            True si hay fragmentos activos en user_recordings (grabación fragmentada en progreso)
+            True si hay fragmentos activos (grabación fragmentada en progreso y no completada)
         """
         try:
-            # Obtener WorkerRecordingService para consultar user_recordings
-            from services.worker_recording_service import WorkerRecordingService
-            recording_service = WorkerRecordingService.get_instance()
-            
-            if not recording_service:
-                logger.debug(f"RecordingService not available for fragment check: {username}")
-                return False
-            
             # Obtener session más reciente por timestamp
             session_keys = self.redis.keys(f"recording:{username}:*")
             if not session_keys:
@@ -1818,7 +1810,7 @@ class RecordingRedisService:
 
             logger.debug(f"🔍 No active fragments found for {username}")
             return False
-            
+
         except Exception as e:
             logger.error(f"❌ Error checking active fragments for {username}: {e}")
             # En caso de error, asumir que NO hay fragmentos para permitir cleanup

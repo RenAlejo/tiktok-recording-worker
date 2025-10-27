@@ -382,10 +382,12 @@ class UploadManager:
             if not is_fragmented:
                 logger.debug(f"Recording {recording_id} is not fragmented, skipping finalization")
                 return
-            
-            # Verificar si hay fragmentos activos usando recording_service
-            has_active_fragments = recording_service._has_active_fragments_internal(username) if recording_service else False
-            
+
+            # Verificar si hay fragmentos activos usando Redis (fuente de verdad persistente)
+            logger.info(f"🔍 Checking for active fragments for {username} using Redis state")
+            has_active_fragments = await redis_service._has_active_fragments(username)
+            logger.info(f"🔍 Active fragments check result for {username}: {has_active_fragments}")
+
             if not has_active_fragments:
                 logger.info(f"🔍 No active fragments detected for {username}, finalizing fragmented recording {recording_id}")
                 
@@ -405,7 +407,7 @@ class UploadManager:
                 else:
                     logger.warning(f"⚠️ Failed to mark all fragments completed for {recording_id}")
             else:
-                logger.debug(f"Active fragments still exist for {username}, not finalizing fragmented recording yet")
+                logger.info(f"⏸️ Active fragments still exist for {username}, not finalizing fragmented recording yet")
                     
         except Exception as e:
             logger.error(f"❌ Error checking and finalizing fragmented recording for {username}: {e}")

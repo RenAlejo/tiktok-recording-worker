@@ -755,7 +755,7 @@ class WorkerRecordingService(RecordingInterface):
                 room_id = self.tiktok_api.get_room_id_from_user(username)
                 if not room_id or not self.tiktok_api.is_room_alive(room_id):
                     logger.info(f"[{self.worker_id}] User {username} is no longer live after {attempt} attempts. Stopping retries.")
-                    self._cleanup_recording(user_id, username, failed=True)
+                    self._cleanup_recording(user_id, username)
 
                     # CRÍTICO: Notificar al monitoring worker para reanudar
                     if job_id:
@@ -866,7 +866,7 @@ class WorkerRecordingService(RecordingInterface):
                 else:
                     # Todos los reintentos agotados
                     logger.error(f"[{self.worker_id}] ❌ All {max_attempts} attempts exhausted for fragment {fragment_number} of {username}")
-                    self._cleanup_recording(user_id, username, failed=True)
+                    self._cleanup_recording(user_id, username)
 
                     # CRÍTICO: Notificar al monitoring worker para reanudar monitoreo
                     if job_id:
@@ -883,7 +883,7 @@ class WorkerRecordingService(RecordingInterface):
                 else:
                     # Todos los reintentos agotados
                     logger.error(f"[{self.worker_id}] ❌ All {max_attempts} attempts exhausted for fragment {fragment_number} of {username}")
-                    self._cleanup_recording(user_id, username, failed=True)
+                    self._cleanup_recording(user_id, username)
 
                     # CRÍTICO: Notificar al monitoring worker para reanudar monitoreo
                     if job_id:

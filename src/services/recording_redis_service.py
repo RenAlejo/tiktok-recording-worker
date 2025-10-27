@@ -1784,14 +1784,38 @@ class RecordingRedisService:
                 logger.debug(f"RecordingService not available for fragment check: {username}")
                 return False
             
-            # Buscar en user_recordings si hay algún fragmento activo para este username
-            with recording_service._recording_lock:
-                for user_id, user_recordings in recording_service.user_recordings.items():
-                    if username in user_recordings:
-                        fragment_number = user_recordings[username].get('fragment_number', 1)
-                        logger.debug(f"🔍 Found active fragment {fragment_number} for {username}")
-                        return True
-            
+            # Obtener session más reciente por timestamp
+            session_keys = self.redis.keys(f"recording:{username}:*")
+            if not session_keys:
+                logger.debug(f"🔍 No session keys found for {username}")
+                return False
+
+            # Extraer timestamp del key y obtener el más reciente
+            # Formato del key: recording:username:timestamp
+            def extract_timestamp(key):
+                try:
+                    if isinstance(key, bytes):
+                        key = key.decode('utf-8')
+                    return int(key.split(':')[-1])
+                except (ValueError, IndexError):
+                    return 0
+
+            latest_key = max(session_keys, key=extract_timestamp)
+            session_data = self.redis.hgetall(latest_key)
+
+            if not session_data:
+                logger.debug(f"🔍 Empty session data for {username}")
+                return False
+
+            # Verificar si es fragmentada y no completada
+            is_fragmented = session_data.get("is_fragmented", "false").lower() == "true"
+            all_completed = session_data.get("all_fragments_completed", "false").lower() == "true"
+
+            if is_fragmented and not all_completed:
+                fragment_number = session_data.get("current_fragment", "?")
+                logger.debug(f"🔍 Found active fragmented recording for {username} (fragment {fragment_number})")
+                return True
+
             logger.debug(f"🔍 No active fragments found for {username}")
             return False
             

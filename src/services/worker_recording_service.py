@@ -427,7 +427,7 @@ class WorkerRecordingService(RecordingInterface):
                     # NOTIFICACIÓN DE ERROR: Rate limit
                     if job_id:
                         self._notify_recording_failed(job_id, username, user_id, f"Rate limit error: {str(ex)}")
-                    self._cleanup_recording(user_id, username)
+                    self._cleanup_recording(user_id, username, failed=True)
 
                 except (ArgsParseError, LiveNotFound, IPBlockedByWAF, UserLiveException, TikTokException) as ex:
                     report_to_queue(False, ex)
@@ -435,7 +435,7 @@ class WorkerRecordingService(RecordingInterface):
                     # NOTIFICACIÓN DE ERROR: Error conocido
                     if job_id:
                         self._notify_recording_failed(job_id, username, user_id, str(ex))
-                    self._cleanup_recording(user_id, username)
+                    self._cleanup_recording(user_id, username, failed=True)
 
                 except Exception as e:
                     report_to_queue(False, e)
@@ -443,7 +443,7 @@ class WorkerRecordingService(RecordingInterface):
                     # NOTIFICACIÓN DE ERROR: Error inesperado
                     if job_id:
                         self._notify_recording_failed(job_id, username, user_id, f"Unexpected error: {str(e)}")
-                    self._cleanup_recording(user_id, username)
+                    self._cleanup_recording(user_id, username, failed=True)
 
             recording_thread = threading.Thread(target=run_recording, daemon=True)
             recording_thread.start()
@@ -480,11 +480,11 @@ class WorkerRecordingService(RecordingInterface):
                         exception = result.get('exception')
                         if exception:
                             logger.error(f"[{self.worker_id}] Recording start failed for {username}: {exception}")
-                            self._cleanup_recording(user_id, username)
+                            self._cleanup_recording(user_id, username, failed=True)
                             raise exception
                         else:
                             logger.error(f"[{self.worker_id}] Recording start failed for {username}: Unknown error")
-                            self._cleanup_recording(user_id, username)
+                            self._cleanup_recording(user_id, username, failed=True)
                             raise UserLiveException("Recording failed to start. Please try again.")
                 else:
                     # Fallback si no hay queue
@@ -494,7 +494,7 @@ class WorkerRecordingService(RecordingInterface):
 
             except Empty:
                 logger.error(f"❌ [{self.worker_id}] Recording start timeout for {username} - no confirmation received")
-                self._cleanup_recording(user_id, username)
+                self._cleanup_recording(user_id, username, failed=True)
                 raise UserLiveException("Recording failed to start (timeout). Please try again.")
 
         except Exception as e:
@@ -544,10 +544,17 @@ class WorkerRecordingService(RecordingInterface):
             logger.error(f"[{self.worker_id}] Error al detener grabación: {e}")
             return False
 
-    def _cleanup_recording(self, user_id: int, username: str):
-        """Limpieza de grabación (simplificado del original)"""
+    def _cleanup_recording(self, user_id: int, username: str, failed: bool = False):
+        """
+        Limpieza de grabación (simplificado del original)
+
+        Args:
+            user_id: ID del usuario
+            username: Nombre de usuario de TikTok
+            failed: True si la grabación falló, False si terminó exitosamente
+        """
         try:
-            logger.debug(f"[{self.worker_id}] Cleaning up recording for {username}")
+            logger.debug(f"[{self.worker_id}] Cleaning up recording for {username} (failed={failed})")
 
             recording_id = None  # Capturar recording_id antes de eliminar
 
@@ -565,8 +572,8 @@ class WorkerRecordingService(RecordingInterface):
                     if not self.channel_recordings[chat_id]:
                         del self.channel_recordings[chat_id]
 
-            # Limpiar registros Redis de grabaciones fallidas
-            if recording_id and self.redis_service:
+            # Limpiar Redis solo si la grabación falló (no hay video para reenviar)
+            if failed and recording_id and self.redis_service:
                 try:
                     from services.redis_helper import RedisAsyncHelper
                     success = RedisAsyncHelper.run_async_safe(
@@ -576,11 +583,11 @@ class WorkerRecordingService(RecordingInterface):
                         timeout=5
                     )
                     if success:
-                        logger.info(f"[{self.worker_id}] ✅ Redis cleanup completed for {recording_id}")
+                        logger.info(f"[{self.worker_id}] ✅ Redis cleanup for failed recording: {recording_id}")
                     else:
-                        logger.warning(f"[{self.worker_id}] ⚠️ Redis cleanup failed for {recording_id}")
+                        logger.warning(f"[{self.worker_id}] ⚠️ Redis cleanup failed for: {recording_id}")
                 except Exception as redis_error:
-                    logger.error(f"[{self.worker_id}] ❌ Error during Redis cleanup for {recording_id}: {redis_error}")
+                    logger.error(f"[{self.worker_id}] ❌ Error during Redis cleanup: {redis_error}")
 
             # NO limpiar master_recordings aquí - se maneja en UploadManager
             logger.debug(f"[{self.worker_id}] Cleanup completed for {username}")
@@ -748,7 +755,7 @@ class WorkerRecordingService(RecordingInterface):
                 room_id = self.tiktok_api.get_room_id_from_user(username)
                 if not room_id or not self.tiktok_api.is_room_alive(room_id):
                     logger.info(f"[{self.worker_id}] User {username} is no longer live after {attempt} attempts. Stopping retries.")
-                    self._cleanup_recording(user_id, username)
+                    self._cleanup_recording(user_id, username, failed=True)
 
                     # CRÍTICO: Notificar al monitoring worker para reanudar
                     if job_id:
@@ -859,7 +866,7 @@ class WorkerRecordingService(RecordingInterface):
                 else:
                     # Todos los reintentos agotados
                     logger.error(f"[{self.worker_id}] ❌ All {max_attempts} attempts exhausted for fragment {fragment_number} of {username}")
-                    self._cleanup_recording(user_id, username)
+                    self._cleanup_recording(user_id, username, failed=True)
 
                     # CRÍTICO: Notificar al monitoring worker para reanudar monitoreo
                     if job_id:
@@ -876,7 +883,7 @@ class WorkerRecordingService(RecordingInterface):
                 else:
                     # Todos los reintentos agotados
                     logger.error(f"[{self.worker_id}] ❌ All {max_attempts} attempts exhausted for fragment {fragment_number} of {username}")
-                    self._cleanup_recording(user_id, username)
+                    self._cleanup_recording(user_id, username, failed=True)
 
                     # CRÍTICO: Notificar al monitoring worker para reanudar monitoreo
                     if job_id:

@@ -477,6 +477,10 @@ class UploadManager:
             
             if not subscriptions:
                 logger.info(f"No pending subscribers for {recording_id}")
+
+                # CRÍTICO: Verificar y finalizar grabación fragmentada ANTES del cleanup
+                await self._check_and_finalize_fragmented_recording(recording_id, task.username, redis_service, recording_service)
+
                 # Marcar forwarding como completado y cleanup
                 await redis_service.mark_forwarding_completed(recording_id)
                 

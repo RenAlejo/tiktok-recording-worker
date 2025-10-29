@@ -949,7 +949,52 @@ class TikTokRecorder:
                         return
                     else:
                         logger.info(f"Stream ended for {self.user}, processing final recording...")
-        
+
+                        # CRÍTICO: Marcar grabación fragmentada como completada en Redis
+                        try:
+                            from services.redis_helper import RedisAsyncHelper
+                            from services.recording_redis_service import recording_redis_service
+
+                            # Obtener recording_id de la sesión más reciente
+                            session_keys = recording_redis_service.redis.keys(f"recording:{self.user}:*")
+                            if session_keys:
+                                # Extraer timestamp y obtener más reciente
+                                def extract_timestamp(key):
+                                    try:
+                                        if isinstance(key, bytes):
+                                            key = key.decode('utf-8')
+                                        return int(key.split(':')[-1])
+                                    except (ValueError, IndexError):
+                                        return 0
+
+                                latest_key = max(session_keys, key=extract_timestamp)
+                                session_data = recording_redis_service.redis.hgetall(latest_key)
+                                recording_id = session_data.get("recording_id")
+
+                                if recording_id:
+                                    # VERIFICAR si la grabación está fragmentada
+                                    is_fragmented = session_data.get("is_fragmented", "false").lower() == "true"
+
+                                    if is_fragmented:
+                                        # Solo marcar como completado si realmente se fragmentó
+                                        success = RedisAsyncHelper.run_async_safe(
+                                            recording_redis_service.mark_all_fragments_completed,
+                                            recording_id,
+                                            timeout=5
+                                        )
+                                        if success:
+                                            logger.info(f"✅ Marked all fragments completed for {recording_id} (stream ended)")
+                                        else:
+                                            logger.warning(f"⚠️ Failed to mark fragments completed for {recording_id}")
+                                    else:
+                                        logger.debug(f"Recording {recording_id} is not fragmented, skipping fragment completion mark")
+                                else:
+                                    logger.debug(f"No recording_id found in session for {self.user}")
+                            else:
+                                logger.debug(f"No Redis session found for {self.user}")
+                        except Exception as e:
+                            logger.warning(f"Could not mark fragments completed for {self.user}: {e}")
+
         # CRÍTICO: Procesar partes existentes SIEMPRE, incluso si la grabación actual falló
         # Esto evita perder partes válidas cuando la última parte falla
         if len(self.recording_parts) > 0:

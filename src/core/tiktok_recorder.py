@@ -2283,10 +2283,10 @@ class TikTokRecorder:
                 r"HTTP error 5[0-9][0-9]",
                 
                 # TLS/Encryption errors that require immediate restart
-                r"Decryption has failed",  # Critical TLS error that corrupts entire stream
-                r"Will reconnect at .* error=Input/output error",  # Pre-TLS failure indicator
-                r"Packet mismatch \d+ \d+ \d+",  # FLV packet corruption (often precedes TLS failure)
-                r"Concatenated FLV detected.*might fail",  # FLV stream corruption
+                #r"Decryption has failed",  # Critical TLS error that corrupts entire stream
+                #r"Will reconnect at .* error=Input/output error",  # Pre-TLS failure indicator
+                #r"Packet mismatch \d+ \d+ \d+",  # FLV packet corruption (often precedes TLS failure)
+                #r"Concatenated FLV detected.*might fail",  # FLV stream corruption
                 
                 # Matroska timestamp corruption (CRITICAL - causes huge temporal gaps)
                 #r"Starting new cluster due to timestamp"  # Matroska timestamp corruption - immediate restart needed
@@ -2468,10 +2468,10 @@ class TikTokRecorder:
                         # CRÍTICO: Errores graves que requieren reinicio inmediato después de inicialización
                         critical_errors_immediate_restart = [
                             #"bytes left at end of AVCC header",  # AVCC header corruption después de init
-                            "corrupt decoded frame",
-                            "Invalid data found when processing input",
-                            "Decryption has failed",  # TLS decryption failure - immediate restart required
-                            "Will reconnect at",  # Pre-TLS failure - restart before corruption
+                            #"corrupt decoded frame",
+                            #"Invalid data found when processing input",
+                            #"Decryption has failed",  # TLS decryption failure - immediate restart required
+                            #"Will reconnect at",  # Pre-TLS failure - restart before corruption
                             #"Packet mismatch",  # FLV corruption - restart immediately
                             #"Concatenated FLV detected",  # Stream corruption - restart immediately
                             #"Starting new cluster due to timestamp"  # Matroska timestamp corruption - CRITICAL

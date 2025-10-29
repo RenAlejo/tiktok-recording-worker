@@ -1025,12 +1025,27 @@ class TikTokRecorder:
             # Actualizar recording_parts con los archivos MP4 convertidos
             self.recording_parts = converted_parts
             logger.info(f"Converted all parts to MP4. Final parts count: {len(self.recording_parts)}")
-            
+
             if len(self.recording_parts) > 0:
                 # Usar la cola de post-procesamiento asíncrona
                 asyncio.run(self._submit_to_postprocessing_queue(is_fragmentation=False))
             else:
                 logger.warning(f"No valid recording parts available for {self.user}")
+
+                # CRÍTICO: Limpiar Redis cuando no hay partes válidas
+                try:
+                    from services.worker_recording_service import WorkerRecordingService
+                    recording_service = WorkerRecordingService.get_instance()
+
+                    if recording_service:
+                        recording_service._cleanup_recording(
+                            user_id=self.telegram_chat_id,
+                            username=self.user,
+                            failed=True
+                        )
+                        logger.info(f"✅ Cleaned up failed recording for {self.user} (no valid parts)")
+                except Exception as e:
+                    logger.warning(f"Could not cleanup failed recording for {self.user}: {e}")
         else:
             logger.warning(f"No recording parts to process for {self.user} - recording may have failed completely")
         
@@ -1628,12 +1643,27 @@ class TikTokRecorder:
             # Actualizar recording_parts con los archivos MP4 convertidos
             self.recording_parts = converted_parts
             logger.info(f"Converted all parts to MP4. Final parts count: {len(self.recording_parts)}")
-            
+
             if len(self.recording_parts) > 0:
                 # Usar la cola de post-procesamiento asíncrona
                 asyncio.run(self._submit_to_postprocessing_queue(is_fragmentation=False))
             else:
                 logger.warning(f"No valid recording parts available for {self.user}")
+
+                # CRÍTICO: Limpiar Redis cuando no hay partes válidas
+                try:
+                    from services.worker_recording_service import WorkerRecordingService
+                    recording_service = WorkerRecordingService.get_instance()
+
+                    if recording_service:
+                        recording_service._cleanup_recording(
+                            user_id=self.telegram_chat_id,
+                            username=self.user,
+                            failed=True
+                        )
+                        logger.info(f"✅ Cleaned up failed recording for {self.user} (no valid parts)")
+                except Exception as e:
+                    logger.warning(f"Could not cleanup failed recording for {self.user}: {e}")
         else:
             logger.warning(f"No recording parts to process for {self.user}")
         
@@ -1709,6 +1739,21 @@ class TikTokRecorder:
                         self._process_final_output(largest_part)
                     else:
                         logger.error(f"No valid recording parts available for {self.user}")
+
+                        # CRÍTICO: Limpiar Redis cuando no hay partes válidas
+                        try:
+                            from services.worker_recording_service import WorkerRecordingService
+                            recording_service = WorkerRecordingService.get_instance()
+
+                            if recording_service:
+                                recording_service._cleanup_recording(
+                                    user_id=self.telegram_chat_id,
+                                    username=self.user,
+                                    failed=True
+                                )
+                                logger.info(f"✅ Cleaned up failed recording for {self.user} (no valid parts)")
+                        except Exception as e:
+                            logger.warning(f"Could not cleanup failed recording for {self.user}: {e}")
             elif len(self.recording_parts) == 1:
                 # Una sola parte
                 single_part = self.recording_parts[0]
@@ -1756,7 +1801,22 @@ class TikTokRecorder:
                 asyncio.run(self._submit_to_postprocessing_queue(is_fragmentation=is_fragmentation))
             else:
                 logger.warning(f"No valid recording parts available for {self.user}")
-                
+
+                # CRÍTICO: Limpiar Redis cuando no hay partes válidas
+                try:
+                    from services.worker_recording_service import WorkerRecordingService
+                    recording_service = WorkerRecordingService.get_instance()
+
+                    if recording_service:
+                        recording_service._cleanup_recording(
+                            user_id=self.telegram_chat_id,
+                            username=self.user,
+                            failed=True
+                        )
+                        logger.info(f"✅ Cleaned up failed recording for {self.user} (no valid parts)")
+                except Exception as e:
+                    logger.warning(f"Could not cleanup failed recording for {self.user}: {e}")
+
         except Exception as e:
             logger.error(f"Error in immediate processing for {self.user}: {e}")
     

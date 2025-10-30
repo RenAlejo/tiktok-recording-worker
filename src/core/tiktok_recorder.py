@@ -952,46 +952,49 @@ class TikTokRecorder:
 
                         # CRÍTICO: Marcar grabación fragmentada como completada en Redis
                         try:
-                            from services.redis_helper import RedisAsyncHelper
-                            from services.recording_redis_service import recording_redis_service
+                            from services.worker_recording_service import WorkerRecordingService
 
-                            # Obtener recording_id de la sesión más reciente
-                            session_keys = recording_redis_service.redis.keys(f"recording:{self.user}:*")
-                            if session_keys:
-                                # Extraer timestamp y obtener más reciente
-                                def extract_timestamp(key):
-                                    try:
-                                        if isinstance(key, bytes):
-                                            key = key.decode('utf-8')
-                                        return int(key.split(':')[-1])
-                                    except (ValueError, IndexError):
-                                        return 0
+                            recording_service = WorkerRecordingService.get_instance()
+                            if recording_service and recording_service.redis_service:
+                                redis_conn = recording_service.redis_service.redis
 
-                                latest_key = max(session_keys, key=extract_timestamp)
-                                session_data = recording_redis_service.redis.hgetall(latest_key)
-                                recording_id = session_data.get("recording_id")
+                                # Obtener recording_id de la sesión más reciente
+                                session_keys = redis_conn.keys(f"recording:{self.user}:*")
+                                if session_keys:
+                                    # Extraer timestamp y obtener más reciente
+                                    def extract_timestamp(key):
+                                        try:
+                                            if isinstance(key, bytes):
+                                                key = key.decode('utf-8')
+                                            return int(key.split(':')[-1])
+                                        except (ValueError, IndexError):
+                                            return 0
 
-                                if recording_id:
-                                    # VERIFICAR si la grabación está fragmentada
-                                    is_fragmented = session_data.get("is_fragmented", "false").lower() == "true"
+                                    latest_key = max(session_keys, key=extract_timestamp)
+                                    session_data = redis_conn.hgetall(latest_key)
+                                    recording_id = session_data.get(b"recording_id" if isinstance(list(session_data.keys())[0], bytes) else "recording_id")
 
-                                    if is_fragmented:
-                                        # Solo marcar como completado si realmente se fragmentó
-                                        success = RedisAsyncHelper.run_async_safe(
-                                            recording_redis_service.mark_all_fragments_completed,
-                                            recording_id,
-                                            timeout=5
-                                        )
-                                        if success:
+                                    if isinstance(recording_id, bytes):
+                                        recording_id = recording_id.decode('utf-8')
+
+                                    if recording_id:
+                                        # VERIFICAR si la grabación está fragmentada
+                                        is_fragmented_value = session_data.get(b"is_fragmented" if isinstance(list(session_data.keys())[0], bytes) else "is_fragmented", b"false")
+                                        if isinstance(is_fragmented_value, bytes):
+                                            is_fragmented_value = is_fragmented_value.decode('utf-8')
+
+                                        is_fragmented = is_fragmented_value.lower() == "true"
+
+                                        if is_fragmented:
+                                            # Marcar directamente en Redis que todos los fragmentos se completaron
+                                            redis_conn.hset(latest_key, "all_fragments_completed", "true")
                                             logger.info(f"✅ Marked all fragments completed for {recording_id} (stream ended)")
                                         else:
-                                            logger.warning(f"⚠️ Failed to mark fragments completed for {recording_id}")
+                                            logger.debug(f"Recording {recording_id} is not fragmented, skipping fragment completion mark")
                                     else:
-                                        logger.debug(f"Recording {recording_id} is not fragmented, skipping fragment completion mark")
+                                        logger.debug(f"No recording_id found in session for {self.user}")
                                 else:
-                                    logger.debug(f"No recording_id found in session for {self.user}")
-                            else:
-                                logger.debug(f"No Redis session found for {self.user}")
+                                    logger.debug(f"No Redis session found for {self.user}")
                         except Exception as e:
                             logger.warning(f"Could not mark fragments completed for {self.user}: {e}")
 

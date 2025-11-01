@@ -1034,23 +1034,10 @@ class TikTokRecorder:
                 asyncio.run(self._submit_to_postprocessing_queue(is_fragmentation=False))
             else:
                 logger.warning(f"No valid recording parts available for {self.user}")
-
-                # CRÍTICO: Limpiar Redis cuando no hay partes válidas
-                try:
-                    from services.worker_recording_service import WorkerRecordingService
-                    recording_service = WorkerRecordingService.get_instance()
-
-                    if recording_service:
-                        recording_service._cleanup_recording(
-                            user_id=self.telegram_chat_id,
-                            username=self.user,
-                            failed=True
-                        )
-                        logger.info(f"✅ Cleaned up failed recording for {self.user} (no valid parts)")
-                except Exception as e:
-                    logger.warning(f"Could not cleanup failed recording for {self.user}: {e}")
+                self._cleanup_failed_recording_redis()
         else:
             logger.warning(f"No recording parts to process for {self.user} - recording may have failed completely")
+            self._cleanup_failed_recording_redis()
         
         # NUEVO: Limpiar archivo de estado de la sesión
         self._cleanup_session_state_file()
@@ -1059,7 +1046,7 @@ class TikTokRecorder:
         if self.cleanup_callback:
             logger.info(f"FFmpeg recording finished definitively for {self.user}, calling cleanup")
             self.cleanup_callback()
-
+        
     def _convert_mkv_to_mp4(self, mkv_file: str, mp4_file: str) -> bool:
         """
         Convierte archivo .mkv a .mp4 con optimizaciones para streaming
@@ -1652,21 +1639,8 @@ class TikTokRecorder:
                 asyncio.run(self._submit_to_postprocessing_queue(is_fragmentation=False))
             else:
                 logger.warning(f"No valid recording parts available for {self.user}")
+                self._cleanup_failed_recording_redis()
 
-                # CRÍTICO: Limpiar Redis cuando no hay partes válidas
-                try:
-                    from services.worker_recording_service import WorkerRecordingService
-                    recording_service = WorkerRecordingService.get_instance()
-
-                    if recording_service:
-                        recording_service._cleanup_recording(
-                            user_id=self.telegram_chat_id,
-                            username=self.user,
-                            failed=True
-                        )
-                        logger.info(f"✅ Cleaned up failed recording for {self.user} (no valid parts)")
-                except Exception as e:
-                    logger.warning(f"Could not cleanup failed recording for {self.user}: {e}")
         else:
             logger.warning(f"No recording parts to process for {self.user}")
         
@@ -1742,21 +1716,7 @@ class TikTokRecorder:
                         self._process_final_output(largest_part)
                     else:
                         logger.error(f"No valid recording parts available for {self.user}")
-
-                        # CRÍTICO: Limpiar Redis cuando no hay partes válidas
-                        try:
-                            from services.worker_recording_service import WorkerRecordingService
-                            recording_service = WorkerRecordingService.get_instance()
-
-                            if recording_service:
-                                recording_service._cleanup_recording(
-                                    user_id=self.telegram_chat_id,
-                                    username=self.user,
-                                    failed=True
-                                )
-                                logger.info(f"✅ Cleaned up failed recording for {self.user} (no valid parts)")
-                        except Exception as e:
-                            logger.warning(f"Could not cleanup failed recording for {self.user}: {e}")
+                        self._cleanup_failed_recording_redis()
             elif len(self.recording_parts) == 1:
                 # Una sola parte
                 single_part = self.recording_parts[0]
@@ -1804,21 +1764,7 @@ class TikTokRecorder:
                 asyncio.run(self._submit_to_postprocessing_queue(is_fragmentation=is_fragmentation))
             else:
                 logger.warning(f"No valid recording parts available for {self.user}")
-
-                # CRÍTICO: Limpiar Redis cuando no hay partes válidas
-                try:
-                    from services.worker_recording_service import WorkerRecordingService
-                    recording_service = WorkerRecordingService.get_instance()
-
-                    if recording_service:
-                        recording_service._cleanup_recording(
-                            user_id=self.telegram_chat_id,
-                            username=self.user,
-                            failed=True
-                        )
-                        logger.info(f"✅ Cleaned up failed recording for {self.user} (no valid parts)")
-                except Exception as e:
-                    logger.warning(f"Could not cleanup failed recording for {self.user}: {e}")
+                self._cleanup_failed_recording_redis()
 
         except Exception as e:
             logger.error(f"Error in immediate processing for {self.user}: {e}")
@@ -3530,3 +3476,21 @@ class TikTokRecorder:
         except Exception as e:
             logger.error(f"Unexpected error during gap trimming: {e}")
             return None
+
+    def _cleanup_failed_recording_redis(self):
+        """
+        Limpia el estado de una grabación fallida, eliminando archivos temporales y registros.
+        """
+        try:
+            from services.worker_recording_service import WorkerRecordingService
+            recording_service = WorkerRecordingService.get_instance()
+
+            if recording_service:
+                recording_service._cleanup_recording(
+                    user_id=self.telegram_chat_id,
+                    username=self.user,
+                    failed=True
+                )
+                logger.info(f"✅ Cleaned up failed recording for {self.user} (no valid parts)")
+        except Exception as e:
+            logger.warning(f"Could not cleanup failed recording for {self.user}: {e}")

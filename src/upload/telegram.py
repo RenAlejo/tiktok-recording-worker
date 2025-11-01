@@ -102,6 +102,101 @@ class Telegram:
                 logger.error(f"Fallback video diagnostics error: {fallback_error}")
                 return None
 
+    def _format_duration(self, seconds: float) -> str:
+        """
+        Formatea duración en segundos a formato HH:MM:SS
+
+        Args:
+            seconds: Duración en segundos
+
+        Returns:
+            String con formato "HH:MM:SS"
+        """
+        hours = int(seconds // 3600)
+        minutes = int((seconds % 3600) // 60)
+        secs = int(seconds % 60)
+        return f"{hours:02d}:{minutes:02d}:{secs:02d}"
+
+    def _format_file_size(self, bytes_size: int) -> str:
+        """
+        Formatea tamaño de archivo en bytes a formato legible (GB/MB)
+
+        Args:
+            bytes_size: Tamaño en bytes
+
+        Returns:
+            String con formato "X.XX GB" o "X.XX MB"
+        """
+        gb = bytes_size / (1024 ** 3)
+        if gb >= 1.0:
+            return f"{gb:.2f} GB"
+        else:
+            mb = bytes_size / (1024 ** 2)
+            return f"{mb:.2f} MB"
+
+    def _get_recording_date(self, file_path: str) -> str:
+        """
+        Obtiene la fecha de modificación del archivo en formato YYYY-MM-DD
+
+        Args:
+            file_path: Ruta del archivo
+
+        Returns:
+            String con formato "YYYY-MM-DD"
+        """
+        from datetime import datetime
+        file_stat = Path(file_path).stat()
+        modification_time = datetime.fromtimestamp(file_stat.st_mtime)
+        return modification_time.strftime("%Y-%m-%d")
+
+    def _build_caption(
+        self,
+        username: str,
+        file_path: str,
+        file_size: int,
+        video_info: dict,
+        fragment_number: int,
+        is_fragmented: bool
+    ) -> str:
+        """
+        Construye el caption del video de forma dinámica basado en la configuración
+
+        Args:
+            username: Nombre de usuario de TikTok
+            file_path: Ruta del archivo de video
+            file_size: Tamaño del archivo en bytes
+            video_info: Diccionario con información del video (incluye 'duration')
+            fragment_number: Número del fragmento actual
+            is_fragmented: Si el video está fragmentado
+
+        Returns:
+            Caption formateado según la configuración
+        """
+        # Primera línea siempre fija: username
+        caption_lines = [f'🔗#{username}']
+
+        # Línea de fragmento (opcional y condicional)
+        if config.caption_show_fragment_info and is_fragmented:
+            caption_lines.append(f'🎬Part {fragment_number}')
+
+        # Línea de fecha (opcional)
+        if config.caption_show_date:
+            recording_date = self._get_recording_date(file_path)
+            caption_lines.append(f'📅 {recording_date}')
+
+        # Línea de info del video (opcional)
+        if config.caption_show_video_info:
+            duration = self._format_duration(video_info['duration'])
+            size = self._format_file_size(file_size)
+            caption_lines.append(f'⏱️ {duration} | 💾 {size}')
+
+        # Línea de watermark (opcional)
+        if config.caption_show_watermark:
+            caption_lines.append(config.caption_watermark_text)
+
+        # Unir todas las líneas con saltos de línea y agregar salto final
+        return '\n'.join(caption_lines) + '\n'
+
     async def upload(self, file_path: str, chat_id: int, username: str, fragment_number: int = 1, is_fragmented: bool = False, max_retries=3, collage_path: str = None, thumbnail_path: str = None):
         def progress_callback(current, total):
             elapsed = time.time() - self._upload_start_time if hasattr(self, '_upload_start_time') else 0.001
@@ -137,16 +232,14 @@ class Telegram:
                     logger.warning("File too large for upload")
                     return False
 
-                # Preparar caption con información del fragmento
-                # Mostrar "Parte X" solo para grabaciones fragmentadas
-                if is_fragmented:
-                    fragment_text = f"\n🎬Part {fragment_number}"
-                else:
-                    fragment_text = ""
-                    
-                caption = (
-                    f'🔗#{username}{fragment_text}\n'
-                    f'🛑<b>Live recorded with @RecLiveBot</b>\n'
+                # Construir caption dinámico basado en configuración
+                caption = self._build_caption(
+                    username=username,
+                    file_path=file_path,
+                    file_size=file_size,
+                    video_info=video_info,
+                    fragment_number=fragment_number,
+                    is_fragmented=is_fragmented
                 )
 
                 # Enviar video y collage en el mismo mensaje si el collage existe

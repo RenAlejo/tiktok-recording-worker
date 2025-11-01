@@ -838,6 +838,30 @@ class EnvConfig:
     def force_url_refresh_delay_seconds(self) -> int:
         return self.get_int("FORCE_URL_REFRESH_DELAY_SECONDS", 5)
 
+    # =====================================================
+    # Telegram Caption Configuration
+    # =====================================================
+
+    @property
+    def caption_show_fragment_info(self) -> bool:
+        return self.get_bool("CAPTION_SHOW_FRAGMENT_INFO", True)
+
+    @property
+    def caption_show_date(self) -> bool:
+        return self.get_bool("CAPTION_SHOW_DATE", False)
+
+    @property
+    def caption_show_video_info(self) -> bool:
+        return self.get_bool("CAPTION_SHOW_VIDEO_INFO", False)
+
+    @property
+    def caption_show_watermark(self) -> bool:
+        return self.get_bool("CAPTION_SHOW_WATERMARK", True)
+
+    @property
+    def caption_watermark_text(self) -> str:
+        return self.get_str("CAPTION_WATERMARK_TEXT", "🛑<b>Live recorded with @RecLiveBot</b>")
+
 
 # Global configuration instance
 config = EnvConfig()

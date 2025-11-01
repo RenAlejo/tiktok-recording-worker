@@ -262,7 +262,11 @@ class EnvConfig:
     @property
     def backup_group_chat_id(self) -> str:
         return self.get_str("BACKUP_GROUP_CHAT_ID", "")
-    
+
+    @property
+    def backup_group_chat_id_2(self) -> str:
+        return self.get_str("BACKUP_GROUP_CHAT_ID2", "")
+
     # Message Forwarding for Backup (simplified - no separate bot needed)
     @property
     def enable_backup_forwarding(self) -> bool:

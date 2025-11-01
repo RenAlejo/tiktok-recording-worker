@@ -283,27 +283,45 @@ class UploadManager:
         """Maneja el backup forwarding usando el bot principal"""
         if not task.backup_upload_enabled:
             return
-            
+
         try:
             # Si upload_result contiene message_id(s) y forwarding está habilitado, usar forwarding con bot principal
-            if upload_result and (config.enable_message_forwarding or config.enable_backup_forwarding) and config.backup_group_chat_id:
-                
-                logger.info(f"Forwarding message to backup group for {task.username}")
-                
-                # Usar el mismo telegram instance (bot principal) para el forwarding
-                backup_chat_id = int(config.backup_group_chat_id)
-                forward_success = await self._telegram.forward_video_to_backup(
-                    message_ids=upload_result,  # Puede ser int o lista
-                    source_chat_id=task.chat_id,
-                    backup_chat_id=backup_chat_id,
-                    username=task.username
-                )
-                
-                if forward_success:
-                    logger.info(f"Successfully forwarded video message for {task.username} to backup group")
-                else:
-                    logger.warning(f"Failed to forward video message for {task.username} to backup group")
-                
+            if upload_result and (config.enable_message_forwarding or config.enable_backup_forwarding):
+
+                # Forward to first backup group if configured
+                if config.backup_group_chat_id:
+                    logger.info(f"Forwarding message to backup group 1 for {task.username}")
+
+                    backup_chat_id = int(config.backup_group_chat_id)
+                    forward_success = await self._telegram.forward_video_to_backup(
+                        message_ids=upload_result,  # Puede ser int o lista
+                        source_chat_id=task.chat_id,
+                        backup_chat_id=backup_chat_id,
+                        username=task.username
+                    )
+
+                    if forward_success:
+                        logger.info(f"Successfully forwarded video message for {task.username} to backup group 1")
+                    else:
+                        logger.warning(f"Failed to forward video message for {task.username} to backup group 1")
+
+                # Forward to second backup group if configured
+                if config.backup_group_chat_id_2:
+                    logger.info(f"Forwarding message to backup group 2 for {task.username}")
+
+                    backup_chat_id_2 = int(config.backup_group_chat_id_2)
+                    forward_success_2 = await self._telegram.forward_video_to_backup(
+                        message_ids=upload_result,  # Puede ser int o lista
+                        source_chat_id=task.chat_id,
+                        backup_chat_id=backup_chat_id_2,
+                        username=task.username
+                    )
+
+                    if forward_success_2:
+                        logger.info(f"Successfully forwarded video message for {task.username} to backup group 2")
+                    else:
+                        logger.warning(f"Failed to forward video message for {task.username} to backup group 2")
+
                 # Marcar backup como completado independientemente del resultado para permitir cleanup
                 if task_id in self._completed_tasks:
                     self._completed_tasks[task_id].backup_upload_completed = True
@@ -314,7 +332,7 @@ class UploadManager:
                 if task_id in self._completed_tasks:
                     self._completed_tasks[task_id].backup_upload_completed = True
                     self._check_and_cleanup_file(task_id)
-                
+
         except Exception as e:
             logger.error(f"Error handling backup forwarding for {task.username}: {e}")
             # Marcar backup como fallido para permitir cleanup
